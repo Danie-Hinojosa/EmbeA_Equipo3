@@ -1,0 +1,10 @@
+# PlatformIO
+.pio/
+.vscode/.browse.c_cpp*
+.sconsign.dblite
+.clangd
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
