@@ -172,7 +172,7 @@ void sendIMUDataOverCAN() {
   // --- Send Message 4: Accelerometer Z ---
   memcpy(can_buf, &accelData.acceleration.z, 4);
   CAN0.sendMsgBuf(CAN_ID_ACCEL_Z, 0, 4, can_buf);
- // delay(100);
+ // delay(100)
 
   Serial.println("TX   | IMU Data Sent (4 messages)");
 }
