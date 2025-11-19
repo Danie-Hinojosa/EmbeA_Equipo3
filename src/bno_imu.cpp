@@ -9,7 +9,7 @@
 // SDA=GPIO8, SCL=GPIO9
 #define I2C_SDA_PIN 8
 #define I2C_SCL_PIN 9
-Adafruit_BNO055 bno = Adafruit_BNO055(55);
+Adafruit_BNO055 bno = Adafruit_BNO055(28);
 
 // --- CAN Module Wiring for ESP32-C3 Super Mini ---
 #define CAN0_INT GPIO_NUM_2   // INT pin
@@ -18,7 +18,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(55);
 #define SPI_SCK  GPIO_NUM_4   // SCK pin
 #define SPI_MISO GPIO_NUM_5   // MISO pin (SO on MCP2515)
 #define SPI_MOSI GPIO_NUM_6   // MOSI pin (SI on MCP2515)
-MCP_CAN CAN0(CAN0_CS);        // Set CS pin
+MCP_CAN CAN0(CAN0_CS);        // Set CS pinx  
 
 // --- CAN DATABASE IDs ---
 // We need 4 messages to send all 6 floats (Accel + Orientation)
@@ -143,25 +143,36 @@ void sendIMUDataOverCAN() {
   sensors_event_t accelData;
   bno.getEvent(&accelData, Adafruit_BNO055::VECTOR_ACCELEROMETER);
 
+  Serial.print("IMU Data: OR X="); Serial.print(orientationData.orientation.x);
+  Serial.print(" Y="); Serial.print(orientationData.orientation.y);
+  Serial.print(" Z="); Serial.print(orientationData.orientation.z);
+  Serial.println();
+
   // --- Send Message 1: Orientation X, Y ---
   // Pack 2 floats (4 bytes each) into the 8-byte buffer
+  // empaquetar todo en un mensaje en vez de 4
   memcpy(can_buf, &orientationData.orientation.x, 4);
   memcpy(can_buf + 4, &orientationData.orientation.y, 4);
+ 
   CAN0.sendMsgBuf(CAN_ID_ORIENT_XY, 0, 8, can_buf);
+  //delay(100);
 
   // --- Send Message 2: Orientation Z ---
   // Pack 1 float into the buffer (only need 4 bytes)
   memcpy(can_buf, &orientationData.orientation.z, 4);
   CAN0.sendMsgBuf(CAN_ID_ORIENT_Z, 0, 4, can_buf);
+  //delay(100);
 
   // --- Send Message 3: Accelerometer X, Y ---
   memcpy(can_buf, &accelData.acceleration.x, 4);
-  memcpy(can_buf + 4, &accelData.acceleration.y, 4);
+  memcpy(can_buf + 4, &accelData.acceleration.y, 4);  
   CAN0.sendMsgBuf(CAN_ID_ACCEL_XY, 0, 8, can_buf);
+  //delay(100);
 
   // --- Send Message 4: Accelerometer Z ---
   memcpy(can_buf, &accelData.acceleration.z, 4);
   CAN0.sendMsgBuf(CAN_ID_ACCEL_Z, 0, 4, can_buf);
+ // delay(100);
 
   Serial.println("TX   | IMU Data Sent (4 messages)");
 }
