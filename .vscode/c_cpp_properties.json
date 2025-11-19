@@ -10,8 +10,11 @@
             "includePath": [
                 "/home/danielh/VSCode/EmbeA_Equipo3/include",
                 "/home/danielh/VSCode/EmbeA_Equipo3/src",
-                "/home/danielh/VSCode/EmbeA_Equipo3/lib/mcp_can",
+                "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
+                "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_BNO055",
+                "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_BNO055/utility",
+                "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_Unified_Sensor",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/newlib/platform_include",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/freertos/include",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/freertos/include/esp_additions/freertos",
@@ -236,7 +239,6 @@
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                 "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                 ""
             ],
             "browse": {
@@ -244,8 +246,11 @@
                 "path": [
                     "/home/danielh/VSCode/EmbeA_Equipo3/include",
                     "/home/danielh/VSCode/EmbeA_Equipo3/src",
-                    "/home/danielh/VSCode/EmbeA_Equipo3/lib/mcp_can",
+                    "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/SPI/src",
+                    "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_BNO055",
+                    "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_BNO055/utility",
+                    "/home/danielh/VSCode/EmbeA_Equipo3/lib/Adafruit_Unified_Sensor",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/newlib/platform_include",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/freertos/include",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32c3/include/freertos/include/esp_additions/freertos",
@@ -470,7 +475,6 @@
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFi/src",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFiClientSecure/src",
                     "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/WiFiProv/src",
-                    "/home/danielh/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src",
                     ""
                 ]
             },

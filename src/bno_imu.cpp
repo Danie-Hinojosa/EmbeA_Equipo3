@@ -1,178 +1,165 @@
 #include <SPI.h>
 #include <mcp_can.h>
-#include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BNO055.h>
-#include <utility/imumaths.h>
-
-// --- BNO055 (IMU) Setup ---
-// SDA=GPIO8, SCL=GPIO9
-#define I2C_SDA_PIN 8
-#define I2C_SCL_PIN 9
-Adafruit_BNO055 bno = Adafruit_BNO055(28);
-
-// --- CAN Module Wiring for ESP32-C3 Super Mini ---
+/*
+MCP2515   ESP32-C3 Super Mini   Function
+=======   ===================   ========
+VCC   ->  5.0V                  Power
+GND   ->  GND                   Ground
+CS    ->  GPIO7 (D7)            Chip Select
+SO    ->  GPIO5 (D5)            MISO (Master In Slave Out)
+SI    ->  GPIO6 (D6)            MOSI (Master Out Slave In)
+SCK   ->  GPIO4 (D4)            Serial Clock
+INT   ->  GPIO2 (D2)            Interrupt
+*/
+// CAN Module Wiring for ESP32-C3 Super Mini - Corrected Pins
 #define CAN0_INT GPIO_NUM_2   // INT pin
 #define CAN0_CS  GPIO_NUM_7   // CS pin
-// SPI Pins
+
+// SPI Pins (based on your specification)
 #define SPI_SCK  GPIO_NUM_4   // SCK pin
-#define SPI_MISO GPIO_NUM_5   // MISO pin (SO on MCP2515)
-#define SPI_MOSI GPIO_NUM_6   // MOSI pin (SI on MCP2515)
-MCP_CAN CAN0(CAN0_CS);        // Set CS pinx  
+#define SPI_MISO GPIO_NUM_5   // MISO pin (SO on MCP2515 connects to MISO on ESP32)
+#define SPI_MOSI GPIO_NUM_6   // MOSI pin (SI on MCP2515 connects to MOSI on ESP32)
 
-// --- CAN DATABASE IDs ---
-// We need 4 messages to send all 6 floats (Accel + Orientation)
-#define CAN_ID_ORIENT_XY 0x100 // Orientation X, Y (2 floats = 8 bytes)
-#define CAN_ID_ORIENT_Z  0x101 // Orientation Z  (1 float = 4 bytes)
-#define CAN_ID_ACCEL_XY  0x102 // Accelerometer X, Y (2 floats = 8 bytes)
-#define CAN_ID_ACCEL_Z   0x103 // Accelerometer Z  (1 float = 4 bytes)
+MCP_CAN CAN0(CAN0_CS);  // Set CS pin
 
-// --- CAN Timing ---
+// CAN Variables
 unsigned long prevTX = 0;
-const unsigned int invlTX = 100; // Send messages every 100ms
+const unsigned int invlTX = 1000;  // Transmission interval (1 second)
+byte txData[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};  // Data to send
 
-// --- CAN Receive Variables ---
+// CAN Receive Variables
 long unsigned int rxId;
 unsigned char len;
 unsigned char rxBuf[8];
 
-// --- Status ---
+// Status tracking
 bool canInitialized = false;
-bool imuInitialized = false;
+unsigned long receivedCount = 0;
+unsigned long sentCount = 0;
 
 void initializeCAN();
-void initializeIMU();
 void receiveCANMessage();
-void sendIMUDataOverCAN();
-
+void sendCANMessage();
 
 void setup() {
   Serial.begin(115200);
-  //while (!Serial) delay(10);
-
-  // Initialize I2C for BNO055 (IMU)
-  initializeIMU();
-
+  while (!Serial) delay(10);
+  
   // Initialize SPI with corrected pins for ESP32-C3 Super Mini
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI, CAN0_CS); // SCK, MISO, MOSI, CS
-
+  
   // Initialize CAN controller
   initializeCAN();
 
   // Set pin modes
   pinMode(CAN0_INT, INPUT);
-
-  Serial.println("\n\nESP32-C3 IMU-to-CAN Broadcaster");
+  
+  Serial.println("\n\nESP32-C3 Super Mini CAN Bus Example");
   Serial.println("===================================");
-  Serial.print("CS Pin: GPIO");  Serial.println(CAN0_CS);
+  Serial.println("Board: ESP32-C3 Super Mini");
+  Serial.print("CS Pin: GPIO"); Serial.println(CAN0_CS);
   Serial.print("INT Pin: GPIO"); Serial.println(CAN0_INT);
+  Serial.print("SCK Pin: GPIO"); Serial.println(SPI_SCK);
+  Serial.print("MISO Pin: GPIO"); Serial.println(SPI_MISO);
+  Serial.print("MOSI Pin: GPIO"); Serial.println(SPI_MOSI);
+  Serial.println("Sending messages every second...");
   Serial.println("Waiting for incoming messages...");
   Serial.println();
 }
 
-void initializeIMU() {
-  Serial.println("Initializing BNO055 (IMU)...");
-  // Initialize I2C with pins from your schematic
-  Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN); 
-
-  if(!bno.begin())
-  {
-    Serial.print("Ooops, no BNO055 detected ... Check wiring!");
-    imuInitialized = false;
-  } else {
-    Serial.println("BNO055 Initialized Successfully!");
-    bno.setExtCrystalUse(true);
-    imuInitialized = true;
-  }
-}
-
 void initializeCAN() {
-  // Cambia MCP_8MHZ por MCP_16MHZ si tu módulo es de 16 MHz
+  // Initialize MCP2515 running at 16MHz with a baudrate of 500kb/s
   if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
     Serial.println("MCP2515 Initialized Successfully!");
     canInitialized = true;
-    CAN0.setMode(MCP_NORMAL);  // Normal mode
+    //CAN0.setMode(MCP_NORMAL);  // Set mode to normal to allow messages to be transmitted Loop Back
   } else {
     Serial.println("Error Initializing MCP2515...");
+    Serial.println("Check wiring and try again.");
     canInitialized = false;
   }
 }
 
 void loop() {
-
   // Handle received CAN messages
   if (!digitalRead(CAN0_INT)) {
     receiveCANMessage();
   }
-
+  
   // Send CAN message at regular intervals
   if (millis() - prevTX >= invlTX) {
     prevTX = millis();
-    
-    // Only send if both systems are good
-    if(canInitialized && imuInitialized) {
-      sendIMUDataOverCAN();
-    }
+    sendCANMessage();
   }
 }
 
-
 void receiveCANMessage() {
   if (CAN0.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK) {
-    Serial.print("RECV | ID: 0x"); Serial.print(rxId, HEX);
-    Serial.print(" | Len: "); Serial.print(len);
+    receivedCount++;
+    
+    // Print formatted message details to serial
+    Serial.print("RECV #");
+    Serial.print(receivedCount);
+    Serial.print(" | ID: 0x");
+    Serial.print(rxId, HEX);
+    Serial.print(" | Len: ");
+    Serial.print(len);
     Serial.print(" | Data: ");
+    
     for (int i = 0; i < len; i++) {
-      if (rxBuf[i] < 0x10) Serial.print("0");
+      if (rxBuf[i] < 0x10) Serial.print("0"); // Leading zero for single digit hex
       Serial.print(rxBuf[i], HEX);
       Serial.print(" ");
     }
+    
+    // Display ASCII representation (if printable)
+    Serial.print("| ASCII: ");
+    for (int i = 0; i < len; i++) {
+      if (rxBuf[i] >= 32 && rxBuf[i] <= 126) {
+        Serial.print((char)rxBuf[i]);
+      } else {
+        Serial.print(".");
+      }
+    }
+    
     Serial.println();
   }
 }
 
-void sendIMUDataOverCAN() {
-  // Buffer for holding CAN data (max 8 bytes)
-  byte can_buf[8];
-
-  /* 1. Get Orientation Data (Euler Angles) */
-  sensors_event_t orientationData; 
-  bno.getEvent(&orientationData, Adafruit_BNO055::VECTOR_EULER);
-
-  /* 2. Get Accelerometer Data */
-  sensors_event_t accelData;
-  bno.getEvent(&accelData, Adafruit_BNO055::VECTOR_ACCELEROMETER);
-
-  Serial.print("IMU Data: OR X="); Serial.print(orientationData.orientation.x);
-  Serial.print(" Y="); Serial.print(orientationData.orientation.y);
-  Serial.print(" Z="); Serial.print(orientationData.orientation.z);
-  Serial.println();
-
-  // --- Send Message 1: Orientation X, Y ---
-  // Pack 2 floats (4 bytes each) into the 8-byte buffer
-  // empaquetar todo en un mensaje en vez de 4
-  memcpy(can_buf, &orientationData.orientation.x, 4);
-  memcpy(can_buf + 4, &orientationData.orientation.y, 4);
- 
-  CAN0.sendMsgBuf(CAN_ID_ORIENT_XY, 0, 8, can_buf);
-  //delay(100);
-
-  // --- Send Message 2: Orientation Z ---
-  // Pack 1 float into the buffer (only need 4 bytes)
-  memcpy(can_buf, &orientationData.orientation.z, 4);
-  CAN0.sendMsgBuf(CAN_ID_ORIENT_Z, 0, 4, can_buf);
-  //delay(100);
-
-  // --- Send Message 3: Accelerometer X, Y ---
-  memcpy(can_buf, &accelData.acceleration.x, 4);
-  memcpy(can_buf + 4, &accelData.acceleration.y, 4);  
-  CAN0.sendMsgBuf(CAN_ID_ACCEL_XY, 0, 8, can_buf);
-  //delay(100);
-
-  // --- Send Message 4: Accelerometer Z ---
-  memcpy(can_buf, &accelData.acceleration.z, 4);
-  CAN0.sendMsgBuf(CAN_ID_ACCEL_Z, 0, 4, can_buf);
- // delay(100);
-
-  Serial.println("TX   | IMU Data Sent (4 messages)");
+void sendCANMessage() {
+  if (canInitialized) {
+    // Use a simple ID that increments with each message
+    //unsigned long messageId = 0x100 + (sentCount % 0x100);
+    unsigned long messageId = 0x40;
+    
+    byte sndStat = CAN0.sendMsgBuf(messageId, 8, txData);
+    
+    if (sndStat == CAN_OK) {
+      //Serial.print("SENT #");
+      //Serial.print(sentCount + 1);
+      Serial.print("ID: 0x");
+      Serial.print(messageId, HEX);
+      Serial.print(" | Data: ");
+      
+      for (int i = 0; i < 8; i++) {
+        if (txData[i] < 0x10) Serial.print("0");
+        Serial.print(txData[i], HEX);
+        Serial.print(" ");
+      }
+      Serial.println();
+      
+      //sentCount++;
+      
+      // Modify data for next transmission
+      //for (int i = 0; i < 8; i++) {
+      //  txData[i] = (txData[i] + 1) % 0x100;
+      //}
+    } else {
+      Serial.println("ERROR: Failed to send message");
+    }
+  }
 }
+
+/*********************************************************************************************************
+  END FILE
+*********************************************************************************************************/
