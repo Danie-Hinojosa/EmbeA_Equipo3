@@ -25,12 +25,6 @@
 const int encoderA = 10;
 const int encoderB = 3;
 
-// --- ESC (Motor) ---
-#define ESC_PIN      GPIO_NUM_20
-// Note: ESC_CH is no longer needed in ESP32 Core 3.0+
-#define ESC_FREQ     50           // 50 Hz
-#define ESC_RES      12           // 12-bit resolution
-
 // ==========================================================
 // OBJECTS & VARIABLES
 // ==========================================================
@@ -40,7 +34,7 @@ Adafruit_BNO055 bno = Adafruit_BNO055(28);
 
 // --- CAN Variables ---
 unsigned long prevTX = 0;
-const unsigned int invlTX = 1000; // Transmission interval (1 second)
+const unsigned int invlTX = 1000;
 long unsigned int rxId;
 unsigned char len;
 unsigned char rxBuf[8];
@@ -53,25 +47,6 @@ volatile int32_t encoderCount = 0;
 const float wheelCircumference_cm = 20.42035f; // (π * 6.5)
 const int pulsesPerRevolution = 600; 
 float lastDistanceCm = 0;
-
-// ==========================================================
-// HELPER FUNCTIONS (ESC & CONVERSION)
-// ==========================================================
-
-// Convert microseconds to Duty Cycle
-uint32_t usToDuty(uint16_t us) {
-  const uint32_t maxDuty = (1u << ESC_RES) - 1;
-  return (uint32_t)((us / 20000.0f) * maxDuty);
-}
-
-// Write Microseconds to ESC
-void escWriteMicroseconds(uint16_t us) {
-  if (us < 1000) us = 1000;
-  if (us > 2000) us = 2000;
-  
-  // FIX: In ESP32 Core 3.0+, ledcWrite takes the PIN, not the channel
-  ledcWrite(ESC_PIN, usToDuty(us));
-}
 
 // ==========================================================
 // INTERRUPT SERVICE ROUTINES (ENCODER)
@@ -111,19 +86,12 @@ void setup() {
   // 3. Initialize IMU
   initializeIMU();
 
-  // 4. Initialize ESC (PWM) - FIX FOR CORE 3.0+
-  // ledcSetup and ledcAttachPin are gone. Replaced by ledcAttach.
-  ledcAttach(ESC_PIN, ESC_FREQ, ESC_RES);
-  
-  escWriteMicroseconds(1000); // Arm ESC (Min throttle)
-  delay(1000); 
-
-  // 5. Initialize Encoder Pins
+  // 4. Initialize Encoder Pins
   pinMode(encoderA, INPUT_PULLUP);
   pinMode(encoderB, INPUT_PULLUP);
   pinMode(CAN0_INT, INPUT);
   
-  // 6. Attach Interrupts
+  // 5. Attach Interrupts
   attachInterrupt(digitalPinToInterrupt(encoderA), isrA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderB), isrB, CHANGE);
 
@@ -131,7 +99,6 @@ void setup() {
 }
 
 void initializeCAN() {
-  // Adjust MCP_8MHZ to MCP_16MHZ if your module uses a 16MHz crystal
   if (CAN0.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
     Serial.println("MCP2515 Initialized Successfully!");
     canInitialized = true;
@@ -165,13 +132,7 @@ void loop() {
     receiveCANMessage();
   }
 
-  // 2. Handle Serial Commands (for ESC testing)
-  if (Serial.available()) {
-    char c = Serial.read();
-    if (c == 't') escTestSweep();
-  }
-
-  // 3. Periodic Transmission
+  // 2. Periodic Transmission
   if (millis() - prevTX >= invlTX) {
     prevTX = millis();
     sendDataGroup();
@@ -186,12 +147,15 @@ void sendDataGroup() {
   if (!canInitialized) return;
 
   // --- PART 1: Get IMU Data ---
-  float X = 0, Y = 0, Z = 0, Ax = 0, Ay = 0, Az = 0;
+  float yaw = 0.0f;
+  
   if (imuInitialized) {
     imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-    imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
-    X = euler.x(); Y = euler.y(); Z = euler.z();
-    Ax = accel.x(); Ay = accel.y(); Az = accel.z();
+    yaw = euler.x();
+    
+    if (yaw > 180) {
+       yaw = -1 * (360 - yaw);
+    }
   }
 
   // --- PART 2: Get Encoder Data ---
@@ -208,41 +172,22 @@ void sendDataGroup() {
   byte txData[8];
   byte status;
 
-  // --- FRAME 1 (ID 0x40): IMU Orient X, Y ---
-  conv.f = X; memcpy(&txData[0], conv.b, 4);
-  conv.f = Y; memcpy(&txData[4], conv.b, 4);
-  CAN0.sendMsgBuf(0x40, 8, txData);
-  delay(50); // Small delay to prevent buffer overflow
+  // FRAME 1: ID 0x40 -> Yaw (Float)
+  conv.f = yaw; 
+  memcpy(&txData[0], conv.b, 4);
+  memset(&txData[4], 0, 4);
+  CAN0.sendMsgBuf(0x40, 0, 8, txData);
+  delay(2);
 
-  // --- FRAME 2 (ID 0x41): IMU Orient Z, Accel X ---
-  conv.f = Z;  memcpy(&txData[0], conv.b, 4);
-  conv.f = Ax; memcpy(&txData[4], conv.b, 4);
-  CAN0.sendMsgBuf(0x41, 8, txData);
-  delay(50);
-
-  // --- FRAME 3 (ID 0x42): IMU Accel Y, Accel Z ---
-  conv.f = Ay; memcpy(&txData[0], conv.b, 4);
-  conv.f = Az; memcpy(&txData[4], conv.b, 4);
-  CAN0.sendMsgBuf(0x42, 8, txData);
-  delay(50);
-
-  // --- FRAME 4 (ID 0x30): Distance, Encoder Count ---
+  // --- FRAME 2 (ID 0x30): Distance, Encoder Count ---
   // Bytes 0-3: Distance (float), Bytes 4-7: Count (int32)
   memcpy(&txData[0], &distance_cm, sizeof(float));
   memcpy(&txData[4], &cnt, sizeof(int32_t));
-  status = CAN0.sendMsgBuf(0x30, 0, 8, txData); // Standard ID
+  status = CAN0.sendMsgBuf(0x30, 0, 8, txData); 
 
   // --- Local Print ---
-  Serial.print("SENT -> IMU: "); Serial.print(X); 
-  Serial.print(" | Dist: "); Serial.print(distance_cm);
+  Serial.printf("Yaw: %.2f | Dist: %.2f cm | Cnt: %d\n", yaw, distance_cm, cnt);
   Serial.println(status == CAN_OK ? " [OK]" : " [ERR]");
-
-  // --- Logic: Motor Control based on distance ---
-  if (distance_cm >= 100.0f) {
-    escWriteMicroseconds(1000); // STOP
-  } else {
-    escWriteMicroseconds(1300); // Slow Forward
-  }
 }
 
 // ==========================================================
@@ -265,16 +210,4 @@ void receiveCANMessage() {
     }
     Serial.println();
   }
-}
-
-// ==========================================================
-// ESC TEST SWEEP
-// ==========================================================
-void escTestSweep() {
-  Serial.println("[TEST] ESC Sweep Start");
-  escWriteMicroseconds(1000); delay(1000);
-  escWriteMicroseconds(1300); delay(1000);
-  escWriteMicroseconds(1700); delay(1000);
-  escWriteMicroseconds(1000); delay(1000);
-  Serial.println("[TEST] ESC Sweep End");
 }
