@@ -6,10 +6,6 @@
 #include <utility/imumaths.h>
 #include "driver/ledc.h"
 
-// ==========================================================
-// PIN DEFINITIONS (ESP32-C3 Super Mini)
-// ==========================================================
-
 // --- CAN Module (MCP2515) ---
 #define CAN0_CS      GPIO_NUM_7   // Chip Select
 #define CAN0_INT     GPIO_NUM_2   // Interrupt Pin
@@ -24,10 +20,6 @@
 // --- Encoder ---
 const int encoderA = 10;
 const int encoderB = 3;
-
-// ==========================================================
-// OBJECTS & VARIABLES
-// ==========================================================
 
 MCP_CAN CAN0(CAN0_CS);
 Adafruit_BNO055 bno = Adafruit_BNO055(28);
@@ -48,10 +40,6 @@ const float wheelCircumference_cm = 20.42035f; // (π * 6.5)
 const int pulsesPerRevolution = 600; 
 float lastDistanceCm = 0;
 
-// ==========================================================
-// INTERRUPT SERVICE ROUTINES (ENCODER)
-// ==========================================================
-
 void IRAM_ATTR isrA() {
   int a = digitalRead(encoderA);
   int b = digitalRead(encoderB);
@@ -66,15 +54,11 @@ void IRAM_ATTR isrB() {
   else if (b == LOW && a == LOW)  encoderCount--;
 }
 
-// ==========================================================
-// SETUP
-// ==========================================================
-
 void setup() {
   Serial.begin(115200);
   while (!Serial) delay(10);
 
-  Serial.println("\n\nESP32-C3 Super Mini: IMU + Encoder + CAN (Core 3.0 Fixed)");
+  Serial.println("\n\nESP32-C3 Super Mini: IMU + Encoder + CAN");
   Serial.println("==========================================================");
 
   // 1. Initialize SPI
@@ -122,10 +106,6 @@ void initializeIMU() {
   }
 }
 
-// ==========================================================
-// LOOP
-// ==========================================================
-
 void loop() {
   // 1. Handle Received CAN Messages
   if (!digitalRead(CAN0_INT)) {
@@ -138,10 +118,6 @@ void loop() {
     sendDataGroup();
   }
 }
-
-// ==========================================================
-// CAN TRANSMISSION LOGIC
-// ==========================================================
 
 void sendDataGroup() {
   if (!canInitialized) return;
@@ -189,10 +165,6 @@ void sendDataGroup() {
   Serial.printf("Yaw: %.2f | Dist: %.2f cm | Cnt: %d\n", yaw, distance_cm, cnt);
   Serial.println(status == CAN_OK ? " [OK]" : " [ERR]");
 }
-
-// ==========================================================
-// CAN RECEPTION LOGIC
-// ==========================================================
 
 void receiveCANMessage() {
   if (CAN0.readMsgBuf(&rxId, &len, rxBuf) == CAN_OK) {
