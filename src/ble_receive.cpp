@@ -3,6 +3,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
+// Global variables to save the coordinates
 float receivedX = 0.0;
 float receivedY = 0.0;
 bool newData = false; 
@@ -12,7 +13,6 @@ BLECharacteristic* pCharacteristic = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
-// Obtained with a scanner
 #define SERVICE_UUID        "91BAD492-B950-4226-AA2B-4EDE9FA42F59"  
 #define CHARACTERISTIC_UUID "CBA1D466-344C-4BE3-AB3F-189F80DD7518"  
 
@@ -28,12 +28,16 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
-// CALLBACK TO RECEIVE DATA
 class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
-      std::string value = pCharacteristic->getValue();
+      
+      String value = pCharacteristic->getValue();
 
       if (value.length() > 0) {
+        Serial.print("Received Value: ");
+        Serial.println(value);
+
+        // Convert String to C-string for parsing
         const char* charData = value.c_str();
         
         // Parse the data expecting format "x,y" (e.g., "12.5,100")
@@ -72,20 +76,16 @@ void setup() {
                       BLECharacteristic::PROPERTY_NOTIFY
                     );
 
-  // Attach the callback to handle writes
   pCharacteristic->setCallbacks(new MyCallbacks());
   
-  // Create a BLE Descriptor (needed for notifications usually, good practice)
   pCharacteristic->addDescriptor(new BLE2902());
 
-  // Start the service
   pService->start();
 
-  // Start advertising
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->setScanResponse(false);
-  pAdvertising->setMinPreferred(0x0);
+  pAdvertising->setMinPreferred(0x0); 
   BLEDevice::startAdvertising();
   Serial.println("Waiting for a client to send coordinates...");
 }
@@ -96,23 +96,19 @@ void loop() {
         Serial.print(receivedX);
         Serial.print(" | Y: ");
         Serial.println(receivedY);
-        
         newData = false;
-
-        // Aqui es donde enviamos al CAN
-        
-
     }
 
-    // handle disconnection logic to restart advertising ensures stability
+    // Handle disconnection/reconnection
     if (!deviceConnected && oldDeviceConnected) {
         delay(500); 
-        pServer->startAdvertising();
-        Serial.println("start advertising");
+        pServer->startAdvertising(); 
+        Serial.println("Restarting advertising...");
         oldDeviceConnected = deviceConnected;
     }
-    // connecting
+    
     if (deviceConnected && !oldDeviceConnected) {
         oldDeviceConnected = deviceConnected;
     }
 }
+
