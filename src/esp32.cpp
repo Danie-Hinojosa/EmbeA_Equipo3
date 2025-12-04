@@ -276,49 +276,47 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encoderB), isrB, CHANGE);
 
   // 6. Initialize BLE
-  // BLEDevice::init("ESP32-C3-Gateway");
-  // BLEScan* pBLEScan = BLEDevice::getScan();
-  // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  // pBLEScan->setActiveScan(true);
-  // pBLEScan->setInterval(100);
-  // pBLEScan->setWindow(99);
+  BLEDevice::init("ESP32-C3-Gateway");
+  BLEScan* pBLEScan = BLEDevice::getScan();
+  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pBLEScan->setActiveScan(true);
+  pBLEScan->setInterval(100);
+  pBLEScan->setWindow(99);
 
-  // Serial.println("[BLE] Scanning for Server...");
-  // pBLEScan->start(5, false);
+  Serial.println("[BLE] Scanning for Server...");
+  pBLEScan->start(5, false);
 
-  // Serial.println("System Ready. Listening for BLE and sending CAN messages...");
+  Serial.println("System Ready. Listening for BLE and sending CAN messages...");
 }
 
 void loop() {
-  // // 1. BLE Connection Logic
-  // if (doConnect) {
-  //   if (connectToServer()) {
-  //     Serial.println("[SYS] Bridge Active: Listening for Camera Coordinates...");
-  //   } else {
-  //     Serial.println("[SYS] Connection Failed. Retrying...");
-  //   }
-  //   doConnect = false;
-  // }
+    // 1. BLE Connection Logic
+    if (doConnect) {
+      if (connectToServer()) {
+        Serial.println("[SYS] Bridge Active: Listening for Camera Coordinates...");
+      } else {
+        Serial.println("[SYS] Connection Failed. Retrying...");
+      }
+      doConnect = false;
+    }
 
-  // // 2. BLE Re-connection / Scan Logic
-  // if (!connected) {
-  //   static unsigned long lastScan = 0;
-  //   if (millis() - lastScan > 5000) {
-  //      Serial.println("[BLE] Scanning...");
-  //      BLEDevice::getScan()->start(5, false);
-  //      lastScan = millis();
-  //   }
-  // }
-  
-  // 3. Handle Received CAN Messages
-  if (!digitalRead(CAN0_INT)) {
-    receiveCANMessage();
-  }
-
-  // 4. Periodic CAN Transmission (IMU + Encoder)
-  if (millis() - prevTX >= invlTX) {
-    prevTX = millis();
-    sendDataGroup();
-  }
-
+    // 2. BLE Re-connection / Scan Logic
+    if (!connected) {
+      static unsigned long lastScan = 0;
+      if (millis() - lastScan > 5000) {
+         Serial.println("[BLE] Scanning...");
+         BLEDevice::getScan()->start(5, false);
+         lastScan = millis();
+      }
+    } else {  
+      // 3. Handle Received CAN Messages
+      if (!digitalRead(CAN0_INT)) {
+        receiveCANMessage();
+      }
+      // 4. Periodic CAN Transmission (IMU + Encoder)
+      if (millis() - prevTX >= invlTX) {
+        prevTX = millis();
+        sendDataGroup();
+      }
+    }
 }
